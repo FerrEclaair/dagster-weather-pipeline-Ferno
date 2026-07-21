@@ -17,10 +17,10 @@ per product, and returns the top 5 by total quantity sold. Add it to the
 **File:** `pipeline_fx/main.py`
 
 Add a new `@asset` named `orders_in_eur` in `pipeline_fx` that reads the
-`orders` table (written by `pipeline_products`) and the `exchange_rates`
-table (written by `pipeline_fx` itself) directly from the shared warehouse
-Postgres using `db.get_engine()` + `pd.read_sql`, joins them, and computes
-each order's total value converted to EUR. This is the payoff of having two
+`orders` and `products` tables (written by `pipeline_products`) and the
+`exchange_rates` table (written by `pipeline_fx` itself) directly from the
+shared warehouse Postgres using `db.get_engine()` + `pd.read_sql`, joins
+them, and computes each order's total value converted to EUR. This is the payoff of having two
 independent pipelines land in one database — no direct dependency between the
 two containers is needed, only the shared destination.
 
