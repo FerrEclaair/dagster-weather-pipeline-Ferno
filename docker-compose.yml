@@ -34,6 +34,9 @@ services:
       WAREHOUSE_USER: warehouse_user
       WAREHOUSE_PASSWORD: warehouse_password
       WAREHOUSE_DB: warehouse
+      DAGSTER_POSTGRES_USER: postgres_user
+      DAGSTER_POSTGRES_PASSWORD: postgres_password
+      DAGSTER_POSTGRES_DB: postgres_db
     networks:
       - dagster_network
     depends_on:
@@ -48,6 +51,9 @@ services:
       WAREHOUSE_USER: warehouse_user
       WAREHOUSE_PASSWORD: warehouse_password
       WAREHOUSE_DB: warehouse
+      DAGSTER_POSTGRES_USER: postgres_user
+      DAGSTER_POSTGRES_PASSWORD: postgres_password
+      DAGSTER_POSTGRES_DB: postgres_db
     networks:
       - dagster_network
     depends_on:
