@@ -1,6 +1,6 @@
 import pandas as pd
 
-from main import ACCURACY_THRESHOLD, train_classifier
+from main import ACCURACY_THRESHOLD, model_quality_check, train_classifier
 
 # Perfectly separable on quantity/price so the classifier's accuracy is
 # deterministic regardless of the train/test split.
@@ -24,3 +24,13 @@ def test_train_classifier_meets_accuracy_threshold_on_separable_data():
     assert bundle["accuracy"] >= ACCURACY_THRESHOLD
     assert bundle["feature_columns"] == ["quantity", "price", "category_a"]
     assert hasattr(bundle["model"], "predict")
+
+
+def test_model_quality_check_fails_below_accuracy_threshold():
+    low_accuracy_bundle = {"model": None, "accuracy": 0.3, "feature_columns": []}
+
+    # Access the underlying function through Dagster's decorator layers
+    check_fn = model_quality_check.computation.node_def.compute_fn.decorated_fn
+    result = check_fn(low_accuracy_bundle)
+
+    assert result.passed is False

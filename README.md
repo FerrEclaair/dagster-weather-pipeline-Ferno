@@ -51,7 +51,7 @@ the warehouse, trains a classifier, and writes predictions back — see
 [docs/mlops.md](docs/mlops.md) for why Dagster's asset/asset-check model
 fits that pattern too.
 
-Both pipelines write with a simple truncate-and-load (`if_exists="replace"`)
+All three pipelines write with a simple truncate-and-load (`if_exists="replace"`)
 — a simplified stand-in for production's shift-based "check-then-insert"
 pattern.
 
