@@ -22,6 +22,23 @@ container. Select all assets and click "Materialize all" to run all three
 pipelines end to end — `pipeline_ml` trains on the data the other two just
 loaded, so it needs to run after them at least once.
 
+## Verifying a run
+
+- **In the UI:** every asset in the graph should turn green. A red asset
+  means its run failed — click it and open the run logs for the error.
+  `model_quality_check` (under `pipeline_ml`) should show a passing check;
+  a failing check means the trained model's accuracy dropped below the 0.6
+  threshold — click it in the Asset Checks panel to see the reported
+  accuracy.
+- **In the warehouse:** connect to the shared Postgres directly and confirm
+  data actually landed:
+  ```bash
+  docker compose exec warehouse_postgresql psql -U warehouse_user -d warehouse -c "\dt"
+  docker compose exec warehouse_postgresql psql -U warehouse_user -d warehouse -c "SELECT COUNT(*) FROM order_value_predictions;"
+  ```
+  You should see `products`, `orders`, `exchange_rates`, and
+  `order_value_predictions` tables, each with rows.
+
 ## What just happened
 
 ```
@@ -54,6 +71,18 @@ fits that pattern too.
 All three pipelines write with a simple truncate-and-load (`if_exists="replace"`)
 — a simplified stand-in for production's shift-based "check-then-insert"
 pattern.
+
+## Running the tests locally
+
+Each pipeline has its own test suite, independent of Docker — tests mock
+the external API calls and the warehouse connection, so no running database
+or containers are needed:
+
+```bash
+cd pipeline_products && pip install -r requirements.txt && python -m pytest -v
+cd pipeline_fx && pip install -r requirements.txt && python -m pytest -v
+cd pipeline_ml && pip install -r requirements.txt && python -m pytest -v
+```
 
 ## Exercises
 
