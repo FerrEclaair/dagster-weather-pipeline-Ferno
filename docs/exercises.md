@@ -34,3 +34,11 @@ Add an `@asset_check` on `raw_orders` that fails if any row has
 
 Hint: see the [Dagster asset checks docs](https://docs.dagster.io/concepts/assets/asset-checks)
 for the `@asset_check` decorator signature.
+
+## Next: the capstone
+
+Once these three are done, take a look at `pipeline_ml` — a third pipeline
+in this repo showing how the same asset/asset-check pattern applies to
+training and evaluating a model (see [mlops.md](mlops.md)). Then head to
+[capstone.md](capstone.md) for a bigger assignment built on everything
+above.

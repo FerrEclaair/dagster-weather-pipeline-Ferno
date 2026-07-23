@@ -8,7 +8,7 @@ own Dagster gRPC code server, registered with a central webserver/daemon via
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine + Docker Compose)
-- Internet access (both pipelines call free public APIs)
+- Internet access (`pipeline_products` and `pipeline_fx` call free public APIs)
 
 ## Quickstart
 
@@ -17,8 +17,10 @@ docker compose up --build
 ```
 
 Then open http://localhost:3000. Under Deployment > Code Locations you should
-see `pipeline_products` and `pipeline_fx`, each its own container. Select all
-assets and click "Materialize all" to run both pipelines end to end.
+see `pipeline_products`, `pipeline_fx`, and `pipeline_ml`, each its own
+container. Select all assets and click "Materialize all" to run all three
+pipelines end to end — `pipeline_ml` trains on the data the other two just
+loaded, so it needs to run after them at least once.
 
 ## What just happened
 
@@ -29,18 +31,25 @@ assets and click "Materialize all" to run both pipelines end to end.
                                                      |
                              dagster_postgresql  (Dagster's own run/schedule/event storage)
 
-  pipeline_products (:4000)                    pipeline_fx (:4001)
-  fakestoreapi.com -> raw_products/raw_orders   api.frankfurter.app -> raw_exchange_rates
-        |                                              |
-        v                                              v
-  products, orders tables  ------------------->  warehouse_postgresql  <-------  exchange_rates table
+  pipeline_products (:4000)          pipeline_fx (:4001)          pipeline_ml (:4002)
+  fakestoreapi.com ->                api.frankfurter.app ->       trains a classifier on
+  raw_products/raw_orders            raw_exchange_rates           products+orders, writes
+        |                                  |                      predictions back
+        v                                  v                            |
+  products, orders  ------------->  warehouse_postgresql  <-------------+
+  tables                            (also: exchange_rates,
+                                      order_value_predictions)
 ```
 
 Each pipeline is a fully independent container: its own `Dockerfile`, its own
 `requirements.txt`, its own source/db modules. They only share the
 `warehouse_postgresql` database as a landing zone — exactly like production's
 21 pipeline containers, each pulling from its own source system into one
-destination database.
+destination database. `pipeline_ml` is the odd one out: instead of pulling
+from an external API, it reads `pipeline_products`' tables straight out of
+the warehouse, trains a classifier, and writes predictions back — see
+[docs/mlops.md](docs/mlops.md) for why Dagster's asset/asset-check model
+fits that pattern too.
 
 Both pipelines write with a simple truncate-and-load (`if_exists="replace"`)
 — a simplified stand-in for production's shift-based "check-then-insert"
@@ -51,6 +60,13 @@ pattern.
 See [docs/exercises.md](docs/exercises.md) for three hands-on TODOs, in
 increasing difficulty. Each one has a `# TODO(exercise-N)` comment marking
 where to add your code.
+
+## Capstone
+
+Once you've finished the three exercises, see
+[docs/capstone.md](docs/capstone.md) for a bigger, open-ended assignment:
+build and wire in your own pipeline, in your own fork, and turn it into a
+portfolio piece.
 
 ## How this maps to the production pipeline
 
