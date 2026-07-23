@@ -7,3 +7,7 @@ load_from:
       host: pipeline_fx
       port: 4001
       location_name: "pipeline_fx"
+  - grpc_server:
+      host: pipeline_ml
+      port: 4002
+      location_name: "pipeline_ml"

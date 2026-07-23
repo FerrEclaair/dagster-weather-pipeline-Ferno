@@ -59,6 +59,23 @@ services:
     depends_on:
       - warehouse_postgresql
 
+  pipeline_ml:
+    build: ./pipeline_ml
+    container_name: pipeline_ml
+    environment:
+      WAREHOUSE_HOST: warehouse_postgresql
+      WAREHOUSE_PORT: "5432"
+      WAREHOUSE_USER: warehouse_user
+      WAREHOUSE_PASSWORD: warehouse_password
+      WAREHOUSE_DB: warehouse
+      DAGSTER_POSTGRES_USER: postgres_user
+      DAGSTER_POSTGRES_PASSWORD: postgres_password
+      DAGSTER_POSTGRES_DB: postgres_db
+    networks:
+      - dagster_network
+    depends_on:
+      - warehouse_postgresql
+
   dagster_webserver:
     build: .
     container_name: dagster_webserver
@@ -75,6 +92,7 @@ services:
       - dagster_postgresql
       - pipeline_products
       - pipeline_fx
+      - pipeline_ml
 
   dagster_daemon:
     build: .
@@ -90,6 +108,7 @@ services:
       - dagster_postgresql
       - pipeline_products
       - pipeline_fx
+      - pipeline_ml
 
 networks:
   dagster_network:
