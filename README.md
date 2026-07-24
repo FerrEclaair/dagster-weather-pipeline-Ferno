@@ -1,112 +1,91 @@
-# dagster-workshop-multi
+# dagster-weather-pipeline
 
-A multi-container introduction to [Dagster](https://dagster.io) using the
-real production pattern: one Docker container per pipeline, each running its
-own Dagster gRPC code server, registered with a central webserver/daemon via
-`workspace.yaml`.
+A Dagster MLOps pipeline that fetches live daily weather data and predicts
+whether it will rain tomorrow, using a Random Forest classifier. Built as
+my capstone extension to a multi-container Dagster workshop — I picked this
+track because I'm interested in ML/prediction work and wanted to try it
+against a real, live external API instead of static data.
 
-## Prerequisites
+Built on top of [dagster-workshop-multi](https://github.com/DanielAdif/dagster-workshop-multi),
+a multi-container Dagster workshop — see that repo's README for the base
+architecture (`pipeline_products`, `pipeline_fx`, `pipeline_ml`).
 
-- Docker Desktop (or Docker Engine + Docker Compose)
-- Internet access (`pipeline_products` and `pipeline_fx` call free public APIs)
+## What I built
 
-## Quickstart
+- **Track:** C — MLOps pipeline
+- **Data source:** [Open-Meteo Archive API](https://open-meteo.com/en/docs/historical-weather-api) —
+  free, no API key required, ~2 years of daily historical weather (temperature,
+  precipitation, wind, humidity, pressure, cloud cover) for a given location.
+- **Key assets:**
+  - `raw_weather_data` — fetches ~2 years of daily historical weather from Open-Meteo, live, on every run
+  - `weather_features` — engineers features (temp range, 3-day rolling precipitation/humidity) and builds the `rain_tomorrow` training label
+  - `trained_rain_model` — trains a `RandomForestClassifier` (200 trees, max depth 6) and reports test-set accuracy
+  - `rain_predictions` — scores the most recent day and writes the prediction (rain/no rain + probability) to the warehouse
+- **Quality gate:** `model_quality_check` — an `@asset_check` on `trained_rain_model` that fails the run if accuracy drops below **60%**. I chose 60% as a minimum viable bar for a binary classifier (better than a coin flip) without being so strict that the check is flaky on a small, simple feature set.
+
+## Architecture
+
+```
+pipeline_products        pipeline_fx              pipeline_ml
+  (products/orders)       (exchange rates)          (order value predictions)
+        |                       |                          |
+        └───────────────────────┴──────────────────────────┘
+                                 |
+                     warehouse_postgresql (shared)
+                                 |
+        ┌────────────────────────────────────────────────┐
+        │                pipeline_weather                │
+        │                                                │
+        │  raw_weather_data ──> weather_features ──>     │
+        │       (Open-Meteo API)   (feature eng.)        │
+        │                              |                 │
+        │                    trained_rain_model          │
+        │                       |            |           │
+        │              model_quality_check   |           │
+        │              (@asset_check)        v           │
+        │                            rain_predictions    │
+        │                          (writes to warehouse) │
+        └────────────────────────────────────────────────┘
+```
+
+`pipeline_weather` is fully independent — it doesn't read from the other
+pipelines' tables — but it's wired into the same Dagster deployment
+(`docker-compose.yml`, `workspace.yaml`) and writes to the same shared
+warehouse Postgres, so its `rain_predictions` table is queryable right
+alongside `products`, `orders`, and `order_value_predictions`.
+
+## Running it
 
 ```bash
 docker compose up --build
 ```
 
-Then open http://localhost:3000. Under Deployment > Code Locations you should
-see `pipeline_products`, `pipeline_fx`, and `pipeline_ml`, each its own
-container. Select all assets and click "Materialize all" to run all three
-pipelines end to end — `pipeline_ml` trains on the data the other two just
-loaded, so it needs to run after them at least once.
+Open http://localhost:3000, find `pipeline_weather` under Deployment >
+Code Locations, and materialize its assets (or use the `refresh_weather_job`
+job, which is also scheduled to run daily).
 
-## Verifying a run
-
-- **In the UI:** every asset in the graph should turn green. A red asset
-  means its run failed — click it and open the run logs for the error.
-  `model_quality_check` (under `pipeline_ml`) should show a passing check;
-  a failing check means the trained model's accuracy dropped below the 0.6
-  threshold — click it in the Asset Checks panel to see the reported
-  accuracy.
-- **In the warehouse:** connect to the shared Postgres directly and confirm
-  data actually landed:
-  ```bash
-  docker compose exec warehouse_postgresql psql -U warehouse_user -d warehouse -c "\dt"
-  docker compose exec warehouse_postgresql psql -U warehouse_user -d warehouse -c "SELECT COUNT(*) FROM order_value_predictions;"
-  ```
-  You should see `products`, `orders`, `exchange_rates`, and
-  `order_value_predictions` tables, each with rows.
-
-## What just happened
-
-```
-                     dagster_webserver (:3000)  <-- workspace.yaml -->  dagster_daemon
-                              |                                              |
-                              +---------------------+-----------------------+
-                                                     |
-                             dagster_postgresql  (Dagster's own run/schedule/event storage)
-
-  pipeline_products (:4000)          pipeline_fx (:4001)          pipeline_ml (:4002)
-  fakestoreapi.com ->                api.frankfurter.app ->       trains a classifier on
-  raw_products/raw_orders            raw_exchange_rates           products+orders, writes
-        |                                  |                      predictions back
-        v                                  v                            |
-  products, orders  ------------->  warehouse_postgresql  <-------------+
-  tables                            (also: exchange_rates,
-                                      order_value_predictions)
-```
-
-Each pipeline is a fully independent container: its own `Dockerfile`, its own
-`requirements.txt`, its own source/db modules. They only share the
-`warehouse_postgresql` database as a landing zone — exactly like production's
-21 pipeline containers, each pulling from its own source system into one
-destination database. `pipeline_ml` is the odd one out: instead of pulling
-from an external API, it reads `pipeline_products`' tables straight out of
-the warehouse, trains a classifier, and writes predictions back — see
-[docs/mlops.md](docs/mlops.md) for why Dagster's asset/asset-check model
-fits that pattern too.
-
-All three pipelines write with a simple truncate-and-load (`if_exists="replace"`)
-— a simplified stand-in for production's shift-based "check-then-insert"
-pattern.
-
-## Running the tests locally
-
-Each pipeline has its own test suite, independent of Docker — tests mock
-the external API calls and the warehouse connection, so no running database
-or containers are needed:
+To inspect the predictions directly:
 
 ```bash
-cd pipeline_products && pip install -r requirements.txt && python -m pytest -v
-cd pipeline_fx && pip install -r requirements.txt && python -m pytest -v
-cd pipeline_ml && pip install -r requirements.txt && python -m pytest -v
+docker compose exec warehouse_postgresql psql -U warehouse_user -d warehouse -c "SELECT * FROM rain_predictions;"
 ```
 
-## Exercises
+## Demo
 
-See [docs/exercises.md](docs/exercises.md) for three hands-on TODOs, in
-increasing difficulty. Each one has a `# TODO(exercise-N)` comment marking
-where to add your code.
+![pipeline_weather assets materialized successfully in the Dagster UI](docs/screenshots/pipeline_weather_runs.png)
 
-## Capstone
+*(All four assets — `raw_weather_data`, `weather_features`, `trained_rain_model`,
+`rain_predictions` — materialize successfully, and `model_quality_check` passes.)*
 
-Once you've finished the three exercises, see
-[docs/capstone.md](docs/capstone.md) for a bigger, open-ended assignment:
-build and wire in your own pipeline, in your own fork, and turn it into a
-portfolio piece.
+![Querying the rain_predictions table directly in Postgres](docs/screenshots/rain_prediction_query_result.png)
 
-## How this maps to the production pipeline
+*(The pipeline predicted an 80% chance of rain the day after 2026-07-23,
+queried straight from the warehouse Postgres.)*
 
-This is adapted from a real Dagster + Docker production system with 21
-pipeline containers pulling manufacturing data (OEE, downtime, QC) from
-internal MSSQL/AS400 systems into a central SQL Server database. This
-workshop keeps the core architecture — one container per pipeline, gRPC code
-servers, `workspace.yaml` registration, a shared destination database — but
-swaps the internal systems for free public APIs, and drops production's
-`DockerRunLauncher` (which spawns a fresh container per run via a mounted
-`docker.sock`) in favor of Dagster's default run launcher, where runs execute
-in-process within each pipeline's own gRPC container. See
-`dagster-workshop-basic` for a single-container introduction to the core
-Dagster concepts before diving into this multi-container version.
+## What I'd do differently in production
+
+- **No historical prediction log** — `rain_predictions` uses `if_exists="replace"`, so each run overwrites the previous prediction instead of appending. In production I'd append with a run timestamp so I could track prediction accuracy over time.
+- **No real model registry or versioning** — the trained model only exists in memory during a run. I'd use an actual model registry (e.g. MLflow) so I could roll back to a previous model if a retrain underperforms.
+- **No retries or alerting** — if the Open-Meteo API is briefly down, the run just fails. I'd add retry policies on `raw_weather_data` and hook `model_quality_check` failures into a real alerting channel (Slack, PagerDuty) instead of just failing silently in the UI.
+- **Single location, hardcoded** — latitude/longitude are hardcoded defaults in `source.py`. A production version would take location as a run config parameter so the same pipeline could serve predictions for multiple cities.
+- **No secrets management** — database credentials are plain environment variables in `docker-compose.yml`, fine for a local workshop but not something I'd do with real infrastructure behind it.
